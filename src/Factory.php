@@ -243,11 +243,13 @@ class Factory
             return $value;
         }
 
-        if (!$this->persist) {
-            // ensure attribute Factory's are also not persisted
-            $value = $value->withoutPersisting();
+        $value = $value->withoutPersisting()->create();
+
+        if ($this->persist) {
+            // ensure attribute Factory's are also persisted
+            $value->persist();
         }
 
-        return $value->create()->object();
+        return $value->object();
     }
 }

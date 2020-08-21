@@ -97,8 +97,15 @@ final class Proxy
 
     public function save(): self
     {
-        $this->objectManager()->persist($this->object);
+        $this->persist();
         $this->objectManager()->flush();
+
+        return $this;
+    }
+
+    public function persist(): self
+    {
+        $this->objectManager()->persist($this->object);
         $this->persisted = true;
 
         return $this;
