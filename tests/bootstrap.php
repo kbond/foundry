@@ -13,5 +13,5 @@ if (!\getenv('USE_FOUNDRY_BUNDLE')) {
 }
 
 TestState::addGlobalState(static function() {
-    TagStory::load();
+    //TagStory::load();
 });

@@ -2,6 +2,7 @@
 
 namespace Zenstruck\Foundry;
 
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Faker;
 
 /**
@@ -49,17 +50,11 @@ class Factory
      */
     final public function create($attributes = []): Proxy
     {
-        $proxy = new Proxy($this->instantiate($attributes));
-
         if (!$this->persist) {
-            return $proxy;
+            return $this->instantiate($attributes);
         }
 
-        return $proxy->save()->withoutAutoRefresh(function(Proxy $proxy) use ($attributes) {
-            foreach ($this->afterPersist as $callback) {
-                $proxy->executeCallback($callback, $attributes);
-            }
-        });
+        return $this->persist($attributes)->save();
     }
 
     /**
@@ -184,7 +179,7 @@ class Factory
     /**
      * @param array|callable $attributes
      */
-    private function instantiate($attributes): object
+    private function instantiate($attributes): Proxy
     {
         // merge the factory attribute set with the passed attributes
         $attributeSet = \array_merge($this->attributeSet, [$attributes]);
@@ -197,6 +192,48 @@ class Factory
 
             if (!\is_array($attributes)) {
                 throw new \LogicException('Before Instantiate event callback must return an array.');
+            }
+        }
+
+//        if (isset($attributes['comments'])) {
+//            /** @var self[] $comments */
+//            $comments = $attributes['comments'];
+//
+//            $this->afterInstantiate[] = function($post) use ($comments) {
+//                foreach ($comments as $comment) {
+//                    $comment->persist(['post' => $post]);
+//                }
+//            };
+//
+//            unset($attributes['comments']);
+//        }
+
+
+        $metadata = self::configuration()->objectManagerFor($this->class)->getClassMetadata($this->class);
+
+        if ($metadata instanceof ClassMetadata) {
+            foreach ($attributes as $key => $value) { // todo, what if snake/kebab case?
+                if (!\is_array($value)) {
+                    continue;
+                }
+
+                if (!$metadata->hasAssociation($key)) {
+                    continue;
+                }
+
+                $mapping = $metadata->getAssociationMapping($key);
+
+                if (ClassMetadata::ONE_TO_MANY !== $mapping['type']) {
+                    continue;
+                }
+
+                $this->afterInstantiate[] = function($object) use ($value) {
+                    foreach ($value as $factory) {
+
+                    }
+                };
+
+                unset($attributes[$key]);
             }
         }
 
@@ -215,7 +252,20 @@ class Factory
             $callback($object, $attributes);
         }
 
-        return $object;
+        return new Proxy($object);
+    }
+
+    /**
+     * @param array|callable $attributes
+     */
+    private function persist($attributes = []): Proxy
+    {
+        // TODO this now calls afterPersist before the entity is actually saved to the database
+        return $this->instantiate($attributes)->persist()->withoutAutoRefresh(function(Proxy $proxy) use ($attributes) {
+            foreach ($this->afterPersist as $callback) {
+                $proxy->executeCallback($callback, $attributes);
+            }
+        });
     }
 
     /**
@@ -245,9 +295,9 @@ class Factory
 
         if (!$this->persist) {
             // ensure attribute Factory's are also not persisted
-            $value = $value->withoutPersisting();
+            return $value->withoutPersisting()->create()->object();
         }
 
-        return $value->create()->object();
+        return $value->persist()->object();
     }
 }

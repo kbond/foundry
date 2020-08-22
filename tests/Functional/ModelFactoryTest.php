@@ -124,7 +124,8 @@ final class ModelFactoryTest extends FunctionalTestCase
             ],
         ]);
 
-        $this->assertCount(4, $post->getComments());
+        $this->assertCount(4, $post->refresh()->getComments());
+        CommentFactory::repository()->assertCount(4);
         UserFactory::repository()->assertCount(4);
         PostFactory::repository()->assertCount(1); // fails (count=5, 1 primary, 1 for each comment)
     }
