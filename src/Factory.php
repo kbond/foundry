@@ -231,6 +231,11 @@ class Factory
         return self::configuration()->faker();
     }
 
+    final public static function delayFlush(callable $callback): void
+    {
+        self::configuration()->delayFlush($callback);
+    }
+
     /**
      * @param array|callable $attributes
      */
