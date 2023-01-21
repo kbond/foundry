@@ -15,8 +15,8 @@ use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ObjectManager;
 use Zenstruck\Assert;
-use Zenstruck\Callback;
-use Zenstruck\Callback\Parameter;
+use Zenstruck\Mirror\Argument;
+use Zenstruck\MirrorCallable;
 
 /**
  * @template TProxiedObject of object
@@ -269,14 +269,14 @@ final class Proxy implements \Stringable
      */
     public function executeCallback(callable $callback, mixed ...$arguments): void
     {
-        Callback::createFor($callback)->invoke(
-            Parameter::union(
-                Parameter::untyped($this),
-                Parameter::typed(self::class, $this),
-                Parameter::typed($this->class, Parameter::factory(fn(): object => $this->object()))
+        MirrorCallable::for($callback)->invoke([
+            Argument::union(
+                Argument::untyped($this),
+                Argument::typed(self::class, $this),
+                Argument::typedFactory($this->class, fn(): object => $this->object())
             )->optional(),
             ...$arguments
-        );
+        ]);
     }
 
     /**

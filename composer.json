@@ -19,7 +19,7 @@
         "symfony/property-access": "^4.4|^5.0|^6.0",
         "symfony/string": "^5.4|^6.0",
         "zenstruck/assert": "^1.0",
-        "zenstruck/callback": "^1.1"
+        "zenstruck/mirror": "@dev"
     },
     "require-dev": {
         "bamarni/composer-bin-plugin": "^1.4",
@@ -35,6 +35,12 @@
         "symfony/phpunit-bridge": "^6.0",
         "symfony/translation-contracts": "^2.5|^3.0"
     },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "git@github.com:kbond/mirror"
+        }
+    ],
     "config": {
         "preferred-install": "dist",
         "sort-packages": true,
