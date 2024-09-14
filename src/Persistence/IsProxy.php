@@ -11,8 +11,7 @@
 
 namespace Zenstruck\Foundry\Persistence;
 
-use Doctrine\ODM\MongoDB\DocumentManager;
-use Symfony\Component\VarExporter\LazyProxyTrait;
+use Symfony\Component\VarExporter\Internal\LazyObjectRegistry;
 use Zenstruck\Assert;
 use Zenstruck\Foundry\Configuration;
 use Zenstruck\Foundry\Exception\PersistenceNotAvailable;
@@ -23,12 +22,42 @@ use Zenstruck\Foundry\Persistence\Exception\RefreshObjectFailed;
  * @author Kevin Bond <kevinbond@gmail.com>
  *
  * @internal
- *
- * @mixin LazyProxyTrait
  */
 trait IsProxy
 {
     private static array $_autoRefresh = [];
+    private object $_object;
+
+    /**
+     * @param \Closure():object $_factory
+     */
+    public function __construct(private \Closure $_factory)
+    {
+        // the following is basically "unset()" for all properties (including private ones)
+        foreach (LazyObjectRegistry::$classResetters[parent::class] ??= LazyObjectRegistry::getClassResetters(parent::class) as $reset) {
+            $reset($this, []);
+        }
+
+        // now, __get/__set will be called whenever a property is accessed
+    }
+
+    public function __get(string $name): mixed
+    {
+        $this->_autoRefresh();
+
+        $object = $this->_object();
+
+        return self::_property(new \ReflectionClass(parent::class), $name)->getValue($object);
+    }
+
+    public function __set(string $name, mixed $value): void
+    {
+        $this->_autoRefresh();
+
+        $object = $this->_object();
+
+        self::_property(new \ReflectionClass(parent::class), $name)->setValue($object, $value);
+    }
 
     public function _enableAutoRefresh(): static
     {
@@ -58,26 +87,25 @@ trait IsProxy
 
     public function _save(): static
     {
-        Configuration::instance()->persistence()->save($this->initializeLazyObject());
+        Configuration::instance()->persistence()->save($this->_object());
 
         return $this;
     }
 
     public function _refresh(): static
     {
-        $this->initializeLazyObject();
-        $object = $this->lazyObjectState->realInstance;
+        $object = $this->_object();
 
         Configuration::instance()->persistence()->refresh($object);
 
-        $this->lazyObjectState->realInstance = $object;
+        $this->_object = $object;
 
         return $this;
     }
 
     public function _delete(): static
     {
-        Configuration::instance()->persistence()->delete($this->initializeLazyObject());
+        Configuration::instance()->persistence()->delete($this->_object());
 
         return $this;
     }
@@ -86,14 +114,14 @@ trait IsProxy
     {
         $this->_autoRefresh();
 
-        return Hydrator::get($this->initializeLazyObject(), $property);
+        return Hydrator::get($this->_object(), $property);
     }
 
     public function _set(string $property, mixed $value): static
     {
         $this->_autoRefresh();
 
-        Hydrator::set($this->initializeLazyObject(), $property, $value);
+        Hydrator::set($this->_object(), $property, $value);
 
         return $this;
     }
@@ -106,7 +134,7 @@ trait IsProxy
         } catch (\Throwable) {
         }
 
-        return $this->initializeLazyObject();
+        return $this->_object();
     }
 
     public function _repository(): ProxyRepositoryDecorator
@@ -162,7 +190,7 @@ trait IsProxy
 
     private function _getAutoRefresh(): bool
     {
-        $real = $this->initializeLazyObject();
+        $real = $this->_object();
 
         static::$_autoRefresh[\spl_object_id($real)] ??= true;
 
@@ -171,7 +199,7 @@ trait IsProxy
 
     private function _setAutoRefresh(bool $autoRefresh): void
     {
-        $real = $this->initializeLazyObject();
+        $real = $this->_object();
 
         static::$_autoRefresh[\spl_object_id($real)] = $autoRefresh;
     }
@@ -180,5 +208,23 @@ trait IsProxy
     private function unproxyArgs(array $args): array
     {
         return \array_map(unproxy(...), $args);
+    }
+
+    private function _object(): object
+    {
+        return $this->_object ??= ($this->_factory)();
+    }
+
+    private static function _property(\ReflectionClass $class, string $name): \ReflectionProperty
+    {
+        try {
+            return $class->getProperty($name);
+        } catch (\ReflectionException $e) {
+            if (!$class = $class->getParentClass()) {
+                throw $e;
+            }
+
+            return self::_property($class, $name);
+        }
     }
 }

@@ -12,9 +12,6 @@
 namespace Zenstruck\Foundry\Persistence;
 
 use Doctrine\Persistence\Proxy as DoctrineProxy;
-use Symfony\Component\VarExporter\LazyObjectInterface;
-use Symfony\Component\VarExporter\LazyProxyTrait;
-use Symfony\Component\VarExporter\ProxyHelper;
 
 /**
  * @author Kevin Bond <kevinbond@gmail.com>
@@ -40,7 +37,9 @@ final class ProxyGenerator
             return $object;
         }
 
-        return self::generateClassFor($object)::createLazyProxy(static fn() => $object); // @phpstan-ignore-line
+        $class = self::generateClassFor($object);
+
+        return new $class(static fn() => $object);
     }
 
     /**
@@ -72,7 +71,7 @@ final class ProxyGenerator
      *
      * @param T $object
      *
-     * @return class-string<LazyObjectInterface&Proxy<T>&T>
+     * @return class-string<Proxy<T>&T>
      */
     private static function generateClassFor(object $object): string
     {
@@ -80,19 +79,28 @@ final class ProxyGenerator
         $class = $object instanceof DoctrineProxy ? \get_parent_class($object) : $object::class;
         $proxyClass = self::proxyClassNameFor($class);
 
-        /** @var class-string<LazyObjectInterface&Proxy<T>&T> $proxyClass */
+        /** @var class-string<Proxy<T>&T> $proxyClass */
         if (\class_exists($proxyClass, autoload: false)) {
             return $proxyClass;
         }
 
-        $proxyCode = 'class '.$proxyClass.ProxyHelper::generateLazyProxy($reflectionClass = new \ReflectionClass($class));
+        $proxyCode = <<<CODE
+            /**
+             * @internal
+             */
+            final class {class} extends {parent} implements {proxyInterface}
+            {
+                use \{proxyTrait};
+            }
+            CODE;
+
         $proxyCode = \strtr(
             $proxyCode,
             [
-                'implements \Symfony\Component\VarExporter\LazyObjectInterface' => \sprintf('implements \%s, \Symfony\Component\VarExporter\LazyObjectInterface', Proxy::class),
-                'use \Symfony\Component\VarExporter\LazyProxyTrait' => \sprintf("use \\%s;\n    use \\%s", IsProxy::class, LazyProxyTrait::class),
-                'if (isset($this->lazyObjectState)) {' => "\$this->_autoRefresh();\n\n        if (isset(\$this->lazyObjectReal)) {",
-                '\func_get_args()' => '$this->unproxyArgs(\func_get_args())',
+                '{class}' => $proxyClass,
+                '{parent}' => $class,
+                '{proxyInterface}' => Proxy::class,
+                '{proxyTrait}' => IsProxy::class,
             ],
         );
 
